@@ -1,0 +1,120 @@
+replicaCount: 3
+
+image:
+  repository: <ECR_ACCOUNT>.dkr.ecr.us-gov-west-1.amazonaws.com/phoenix-liveview-demo
+  pullPolicy: IfNotPresent
+  tag: ""  # overridden by CI with the image SHA tag
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations:
+  # Prometheus scrape annotations — Phoenix publishes telemetry via :telemetry_poller.
+  # A sidecar or PodMonitor picks this up if prometheus-operator is installed.
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "4000"
+  prometheus.io/path: "/metrics"
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+service:
+  type: ClusterIP
+  port: 4000
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    # LiveView holds long-lived WebSocket connections — bump proxy timeouts.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    # WebSocket upgrade support.
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+    # TLS termination at the ingress; backend speaks plain HTTP.
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: demo.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: phoenix-demo-tls
+      hosts:
+        - demo.example.com
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    # No CPU limit: CPU limits cause throttling under burst, which raises latency.
+    # The HPA scales on CPU utilisation relative to the request instead.
+    memory: 512Mi
+
+# Env vars injected from Kubernetes Secrets (see templates/secret.yaml).
+env:
+  PHX_HOST: "demo.example.com"
+  PORT: "4000"
+  POOL_SIZE: "10"
+  DATABASE_SSL: "true"
+
+# Secret keys — values populated via external-secrets or manual kubectl.
+secretEnv:
+  DATABASE_URL: ""      # ecto://USER:PASS@HOST/DATABASE
+  SECRET_KEY_BASE: ""   # mix phx.gen.secret
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 15
+  targetCPUUtilizationPercentage: 60
+  targetMemoryUtilizationPercentage: 70
+  # Scale-down stabilisation: wait 5 minutes before removing a replica.
+  # Avoids flapping when traffic is bursty and connections are draining slowly.
+  scaleDownStabilizationWindowSeconds: 300
+
+podDisruptionBudget:
+  enabled: true
+  # With minReplicas: 3, this allows at most 1 pod unavailable at a time.
+  # Rolling deploy (maxUnavailable: 0, maxSurge: 1) won't violate this.
+  minAvailable: 2
+
+# Toleration matching the Karpenter NodePool taint.
+tolerations:
+  - key: workload
+    operator: Equal
+    value: phoenix-liveview
+    effect: NoSchedule
+
+nodeSelector: {}
+
+affinity:
+  # Spread pods across availability zones to reduce blast radius.
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: phoenix-liveview-demo
+          topologyKey: topology.kubernetes.io/zone

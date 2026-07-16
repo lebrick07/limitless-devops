@@ -1,0 +1,100 @@
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: phoenix-liveview
+spec:
+  template:
+    metadata:
+      labels:
+        workload: phoenix-liveview
+    spec:
+      nodeClassRef:
+        apiVersion: karpenter.k8s.aws/v1
+        kind: EC2NodeClass
+        name: phoenix-liveview
+
+      requirements:
+        # ── Capacity type ─────────────────────────────────────────────────────
+        # On-demand only. Spot instances receive a 2-minute interruption notice
+        # before termination. With terminationGracePeriodSeconds: 90 and a
+        # Cowboy drain window of 60 s, we cannot reliably drain all open
+        # LiveView WebSocket connections within spot's interruption window.
+        # Cost optimisation for this workload should come from Reserved Instances
+        # or Compute Savings Plans, not spot — the connection-holding nature
+        # makes spot disruption unacceptable for baseline replicas.
+        #
+        # If a separate "burst" NodePool is desired for stateless auxiliary
+        # workloads on this cluster, spot is appropriate there.
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["on-demand"]
+
+        # ── Architecture ──────────────────────────────────────────────────────
+        # x86_64 only. Graviton (arm64) availability in us-gov-west-1 is more
+        # limited and the EKS-optimised AL2 Graviton AMIs have fewer GovCloud
+        # validation records. Revisit when arm64 is better established there.
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64"]
+
+        - key: kubernetes.io/os
+          operator: In
+          values: ["linux"]
+
+        # ── Instance families and sizes ───────────────────────────────────────
+        # c6i (compute-optimised): good CPU-to-memory ratio for Phoenix request
+        # processing and LiveView diff computation. The BEAM is CPU-efficient but
+        # each LiveView process holds state; we want enough memory headroom.
+        #
+        # m6i (general-purpose): slightly more memory per vCPU than c6i — useful
+        # when connection counts per pod are high and per-socket state adds up.
+        #
+        # Sizes: large (2 vCPU / 4 GB) is the smallest practical unit for BEAM
+        # (ERTS scheduler defaults to one thread per logical CPU). xlarge and
+        # 2xlarge allow more connections per node, reducing scheduling overhead
+        # and minimising the blast radius of a single-node loss.
+        #
+        # We exclude bare metal and GPU types explicitly to avoid accidental
+        # scheduling on expensive hardware.
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values:
+            - c6i.large      # 2 vCPU  / 4 GB
+            - c6i.xlarge     # 4 vCPU  / 8 GB
+            - c6i.2xlarge    # 8 vCPU  / 16 GB
+            - m6i.large      # 2 vCPU  / 8 GB
+            - m6i.xlarge     # 4 vCPU  / 16 GB
+
+        # Restrict to GovCloud region.
+        - key: topology.kubernetes.io/region
+          operator: In
+          values: ["us-gov-west-1"]
+
+      # ── Taints ────────────────────────────────────────────────────────────
+      # Taint nodes so only pods with the matching toleration (in values.yaml)
+      # are scheduled here. Prevents noisy-neighbour workloads from landing
+      # on LiveView nodes and stealing CPU during bursts.
+      taints:
+        - key: workload
+          value: phoenix-liveview
+          effect: NoSchedule
+
+  # ── Disruption ──────────────────────────────────────────────────────────────
+  disruption:
+    # WhenEmpty: only consolidate nodes that have NO pods running.
+    # WhenUnderutilized would move pods to reclaim capacity, which triggers
+    # the pod eviction path and disrupts open WebSocket connections even with
+    # a PDB in place (eviction is permitted once minAvailable is satisfied).
+    # WhenEmpty is the correct choice for a connection-holding workload.
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: 30s
+
+    # Rotate nodes every 30 days. This forces AMI/kernel upgrades without
+    # requiring manual drain cycles and bounds node age in environments that
+    # audit for patch compliance (common in GovCloud / FedRAMP).
+    expireAfter: 720h
+
+  # ── Resource limits ─────────────────────────────────────────────────────────
+  limits:
+    cpu: "128"       # ~16 x c6i.xlarge equivalent
+    memory: 512Gi

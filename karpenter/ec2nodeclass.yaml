@@ -1,0 +1,60 @@
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: phoenix-liveview
+spec:
+  # ── AMI ────────────────────────────────────────────────────────────────────
+  # Amazon Linux 2 is the standard EKS-optimised AMI family available in
+  # GovCloud. AL2023 is also available in us-gov-west-1 as of 2024.
+  # AL2 FIPS variant should be used if the cluster security baseline requires
+  # FIPS 140-2 validated crypto modules (common in FedRAMP High environments).
+  amiFamily: AL2
+  # Karpenter resolves the latest EKS-optimised AMI for the cluster's k8s
+  # version automatically via SSM (GovCloud SSM endpoint is used when the
+  # cluster is in us-gov-west-1).
+  amiSelectorTerms:
+    - alias: al2@latest
+
+  # ── Networking ─────────────────────────────────────────────────────────────
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "my-cluster"   # tag your private subnets with this
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "my-cluster"
+
+  # ── IAM ────────────────────────────────────────────────────────────────────
+  # Node IAM role must exist before Karpenter can launch instances.
+  # In GovCloud, ARNs use the aws-us-gov partition.
+  role: KarpenterNodeRole-my-cluster
+
+  # ── Instance metadata (IMDSv2) ─────────────────────────────────────────────
+  # IMDSv2 is required in GovCloud / FedRAMP environments. Hop limit of 1
+  # prevents containers from reaching the metadata service directly.
+  metadataOptions:
+    httpEndpoint: enabled
+    httpProtocolIPv6: disabled
+    httpPutResponseHopLimit: 1        # container isolation
+    httpTokens: required              # IMDSv2 only — no IMDSv1 fallback
+
+  # ── Storage ────────────────────────────────────────────────────────────────
+  blockDeviceMappings:
+    - deviceName: /dev/xvda
+      ebs:
+        volumeSize: 30Gi
+        volumeType: gp3
+        iops: 3000
+        throughput: 125
+        encrypted: true
+        # kmsKeyID: arn:aws-us-gov:kms:us-gov-west-1:ACCOUNT:key/KEY-ID
+        # Uncomment and set the CMK ARN for FIPS / FedRAMP High environments.
+        deleteOnTermination: true
+
+  # ── User data ──────────────────────────────────────────────────────────────
+  # No custom user data required for this workload. Reserved for node-level
+  # sysctl tuning (e.g. net.core.somaxconn) if connection backlog becomes a
+  # bottleneck under high WebSocket concurrency.
+  # userData: |
+  #   #!/bin/bash
+  #   sysctl -w net.core.somaxconn=65535
+  #   sysctl -w net.ipv4.tcp_max_syn_backlog=65535

@@ -1,0 +1,71 @@
+{{- if .Values.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "phoenix-liveview-demo.fullname" . }}
+  labels:
+    {{- include "phoenix-liveview-demo.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "phoenix-liveview-demo.fullname" . }}
+  minReplicas: {{ .Values.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  metrics:
+    # CPU: a reasonable proxy for burst traffic spikes, though it under-signals
+    # for idle-but-connected LiveView sessions. See README for why a custom
+    # connection-count metric is preferable and how to add it via KEDA.
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+    # Memory: catches connection accumulation that doesn't spike CPU.
+    # Each LiveView process holds state in memory; this scales before OOM.
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetMemoryUtilizationPercentage }}
+  behavior:
+    scaleUp:
+      # React quickly to traffic spikes — allow immediate scale-up.
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+    scaleDown:
+      # Scale down slowly: wait for connections to drain and confirm the dip is
+      # sustained, not a brief gap between bursts.
+      stabilizationWindowSeconds: {{ .Values.autoscaling.scaleDownStabilizationWindowSeconds }}
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+{{- end }}
+
+# ── Custom-metrics sketch (KEDA) ─────────────────────────────────────────────
+# Uncomment and adapt when prometheus-operator + KEDA are available.
+# This scales on active LiveView socket count — a direct signal for this workload.
+#
+# apiVersion: keda.sh/v1alpha1
+# kind: ScaledObject
+# metadata:
+#   name: phoenix-liveview-demo-keda
+# spec:
+#   scaleTargetRef:
+#     name: {{ include "phoenix-liveview-demo.fullname" . }}
+#   minReplicaCount: 3
+#   maxReplicaCount: 15
+#   triggers:
+#     - type: prometheus
+#       metadata:
+#         serverAddress: http://prometheus-operated.monitoring.svc:9090
+#         # phoenix_live_view_socket_connected_total is emitted via :telemetry.
+#         # Target: 500 concurrent sockets per pod — tune for your workload.
+#         query: sum(phoenix_live_view_socket_connected_total) / count(kube_pod_info{pod=~"phoenix-liveview-demo.*"})
+#         threshold: "500"

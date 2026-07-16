@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "phoenix-liveview-demo.fullname" . }}
+  labels:
+    {{- include "phoenix-liveview-demo.labels" . | nindent 4 }}
+spec:
+  # ClusterIP: traffic enters via the Ingress controller which terminates TLS
+  # and forwards WebSocket upgrades. A LoadBalancer Service would require NLB
+  # with WebSocket support and additional sticky-session config — the Ingress
+  # layer handles this more cleanly.
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "phoenix-liveview-demo.selectorLabels" . | nindent 4 }}

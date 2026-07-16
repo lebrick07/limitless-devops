@@ -1,0 +1,143 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "phoenix-liveview-demo.fullname" . }}
+  labels:
+    {{- include "phoenix-liveview-demo.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "phoenix-liveview-demo.selectorLabels" . | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Zero downtime rolling deploy.
+      # maxUnavailable: 0 ensures the PDB (minAvailable: 2) is never breached.
+      # maxSurge: 1 brings a new pod up before terminating an old one.
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      annotations:
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "phoenix-liveview-demo.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "phoenix-liveview-demo.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+
+      # ── Graceful drain ───────────────────────────────────────────────────────
+      # Kubernetes removes the pod from Service endpoints asynchronously after
+      # sending SIGTERM. The preStop sleep bridges this gap: the pod stops
+      # receiving new traffic before OTP starts its shutdown sequence.
+      #
+      # Timeline:
+      #   t=0   SIGTERM sent; preStop hook runs (sleep 15 s)
+      #   t=0   kube-proxy / iptables rules updated (happens concurrently, ~2-5 s)
+      #   t=15  preStop completes; SIGTERM delivered to PID 1 (the release bin)
+      #   t=15  OTP :init.stop() triggered; Endpoint supervisor terminates Cowboy
+      #   t=15  Cowboy Ranch drains existing connections (up to 60 s per runtime.exs)
+      #   t=75  Max drain window closes; remaining connections forcefully closed
+      #   t=90  terminationGracePeriodSeconds limit — kubelet sends SIGKILL
+      #
+      # terminationGracePeriodSeconds (90) > preStop (15) + Cowboy drain (60) + margin (15)
+      terminationGracePeriodSeconds: 90
+
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+
+          lifecycle:
+            preStop:
+              exec:
+                # Sleep before SIGTERM reaches the app, giving Kubernetes time to
+                # drain this pod from the Service endpoints and load balancer.
+                command: ["sh", "-c", "sleep 15"]
+
+          ports:
+            - name: http
+              containerPort: 4000
+              protocol: TCP
+
+          # ── Probes ──────────────────────────────────────────────────────────
+          # Liveness: TCP check — if the port is not open the pod is wedged.
+          # Readiness: HTTP check — pod only receives traffic once Phoenix
+          #            has fully started and can serve requests.
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /
+              port: http
+            # Allow up to 60 s for the BEAM + Ecto pool to initialise on cold start.
+            failureThreshold: 12
+            periodSeconds: 5
+
+          env:
+            - name: PHX_HOST
+              value: {{ .Values.env.PHX_HOST | quote }}
+            - name: PORT
+              value: {{ .Values.env.PORT | quote }}
+            - name: POOL_SIZE
+              value: {{ .Values.env.POOL_SIZE | quote }}
+            - name: DATABASE_SSL
+              value: {{ .Values.env.DATABASE_SSL | quote }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "phoenix-liveview-demo.fullname" . }}-secrets
+                  key: DATABASE_URL
+            - name: SECRET_KEY_BASE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "phoenix-liveview-demo.fullname" . }}-secrets
+                  key: SECRET_KEY_BASE
+            # ERL_CRASH_DUMP must point to a writable path; /tmp is mounted as emptyDir.
+            - name: ERL_CRASH_DUMP
+              value: /tmp/erl_crash.dump
+
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+
+          volumeMounts:
+            # readOnlyRootFilesystem: true requires explicit writable mounts for
+            # any path the BEAM needs to write at runtime.
+            - name: tmp
+              mountPath: /tmp
+
+      volumes:
+        - name: tmp
+          emptyDir: {}
+
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

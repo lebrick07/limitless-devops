@@ -1,0 +1,19 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "phoenix-liveview-demo.fullname" . }}
+  labels:
+    {{- include "phoenix-liveview-demo.labels" . | nindent 4 }}
+spec:
+  # minAvailable: 2 with minReplicas: 3 means at most one pod is ever voluntarily
+  # disrupted at a time. This protects in-flight LiveView connections during:
+  #   - rolling deploys (maxUnavailable: 0 in the Deployment handles this anyway)
+  #   - node drains (kubectl drain respects PDBs)
+  #   - Karpenter consolidation (WhenEmpty policy prevents this from triggering
+  #     while pods are present, but the PDB is a second line of defence)
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "phoenix-liveview-demo.selectorLabels" . | nindent 6 }}
+{{- end }}
