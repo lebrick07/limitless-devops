@@ -6,25 +6,37 @@ Deployment infrastructure for the [Phoenix LiveView example app](https://github.
 
 ## Quick start (local — Docker Desktop)
 
+Run the app locally in under 5 minutes. No port-forwarding needed — the ingress exposes it at `http://localhost`.
+
 **Prerequisites:** Docker Desktop with Kubernetes enabled.
 
 ```bash
 # 1. Install the nginx ingress controller (one-time)
 kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.1/deploy/static/provider/cloud/deploy.yaml
+kubectl wait --namespace ingress-nginx \
+  --for=condition=ready pod \
+  --selector=app.kubernetes.io/component=controller \
+  --timeout=90s
 
-# 2. Clone this repo
-git clone https://github.com/lebrick07/limitless-devops && cd limitless-devops
+# 2. Clone the app source and build the image
+git clone https://github.com/chrismccord/phoenix_live_view_example
+cd phoenix_live_view_example
+cp /path/to/this/repo/Dockerfile .
+cp /path/to/this/repo/runtime.exs .
+cp /path/to/this/repo/page_live.ex lib/demo_web/live/page_live.ex
+docker build -t phoenix-demo:local .
 
-# 3. Deploy
+# 3. Deploy with the local values override
+cd /path/to/this/repo
 helm install phoenix-demo ./helm \
   -f helm/values-local.yaml \
-  --set secretEnv.SECRET_KEY_BASE="$(openssl rand -hex 64)" \
-  --set secretEnv.DATABASE_URL="ecto://user:pass@localhost/demo"
+  --set secretEnv.DATABASE_URL="ecto://user:pass@host/db" \
+  --set secretEnv.SECRET_KEY_BASE="$(openssl rand -hex 64)"
 
 # 4. Open http://localhost
 ```
 
-> The LiveView demos (Snake, Thermostat, Clock, Pacman) work without a real database. DB-backed pages will show connection errors unless a real Postgres instance is provided.
+> **Note:** `DATABASE_URL` points to a real Postgres instance. Without one, the app starts and the homepage loads, but DB-backed pages (user list, pagination) will error. The LiveView examples (Snake, Thermostat, Clock, Pacman) work without a database.
 
 ---
 
