@@ -9,9 +9,11 @@ spec:
         workload: phoenix-liveview
     spec:
       nodeClassRef:
-        apiVersion: karpenter.k8s.aws/v1
+        group: karpenter.k8s.aws
         kind: EC2NodeClass
         name: phoenix-liveview
+
+      expireAfter: 720h
 
       requirements:
         # ── Capacity type ─────────────────────────────────────────────────────
@@ -84,11 +86,6 @@ spec:
     # WhenEmpty is the correct choice for a connection-holding workload.
     consolidationPolicy: WhenEmpty
     consolidateAfter: 30s
-
-    # Rotate nodes every 30 days. This forces AMI/kernel upgrades without
-    # requiring manual drain cycles and bounds node age in environments that
-    # audit for patch compliance (common in GovCloud / FedRAMP).
-    expireAfter: 720h
 
   # ── Resource limits ─────────────────────────────────────────────────────────
   limits:
