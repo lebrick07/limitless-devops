@@ -80,6 +80,10 @@ env:
   DATABASE_SSL: "true"
 
 # Secret keys — values populated via external-secrets or manual kubectl.
+# Secret values — must be provided at deploy time, never committed.
+# For local testing, values-local.yaml provides DATABASE_URL pointing at
+# an in-cluster Postgres (bitnami/postgresql). For EKS, point at RDS:
+#   --set secretEnv.DATABASE_URL="ecto://USER:PASS@rds-host.us-gov-west-1.rds.amazonaws.com/DATABASE"
 secretEnv:
   DATABASE_URL: ""      # ecto://USER:PASS@HOST/DATABASE
   SECRET_KEY_BASE: ""   # mix phx.gen.secret
