@@ -45,12 +45,16 @@ helm install phoenix-demo ./helm \
 ```
 Dockerfile              Multi-stage production image build
 runtime.exs             Patched runtime config (server: true, Cowboy drain)
+page_live.ex            Upstream bug patch (live_dashboard_path removed)
 helm/                   Helm chart — all Kubernetes manifests
   Chart.yaml
-  values.yaml
+  values.yaml           Production values (ECR image, 3 replicas, TLS, HPA, PDB)
+  values-local.yaml     Local override (ECR Public image, 1 replica, no TLS)
+  QUICKSTART.md         Step-by-step local setup instructions
   templates/
     deployment.yaml
     service.yaml
+    ingress.yaml
     hpa.yaml
     pdb.yaml
     serviceaccount.yaml
@@ -235,7 +239,7 @@ Spot instances receive a **2-minute interruption notice**. Our drain window is `
 |------|--------|
 | Erlang distribution / libcluster | Requires deciding on headless Service strategy + testing cluster formation; deferred rather than half-implemented |
 | TLS certificate management | Cert-manager + ACM integration is cluster-specific; left as `secretName: phoenix-demo-tls` placeholder |
-| Ingress template | Omitted to keep the chart generic; the annotations in `values.yaml` cover the nginx config needed |
+| Ingress template | Added — `helm/templates/ingress.yaml` with WebSocket-ready nginx annotations. `values-local.yaml` disables TLS for local testing; `values.yaml` enables it for production. |
 | Prometheus / ServiceMonitor | Operator CRDs must exist in the cluster; added annotations for auto-discovery instead |
 | Health check endpoint | The app doesn't expose `/healthz`; using `/` as readiness target. A dedicated `/health` route would be cleaner |
 | Database migrations | `mix ecto.migrate` needs to run before deploy; a Kubernetes Job or init container is the right approach — deferred |
