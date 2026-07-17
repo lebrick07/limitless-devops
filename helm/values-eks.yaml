@@ -46,4 +46,8 @@ autoscaling:
 podDisruptionBudget:
   enabled: false
 
-tolerations: []
+tolerations:
+  - key: workload
+    value: phoenix-liveview
+    effect: NoSchedule
+    operator: Equal

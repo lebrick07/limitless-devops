@@ -4,33 +4,29 @@ metadata:
   name: phoenix-liveview
 spec:
   # ── AMI ────────────────────────────────────────────────────────────────────
-  # Amazon Linux 2 is the standard EKS-optimised AMI family available in
-  # GovCloud. AL2023 is also available in us-gov-west-1 as of 2024.
-  # AL2 FIPS variant should be used if the cluster security baseline requires
-  # FIPS 140-2 validated crypto modules (common in FedRAMP High environments).
+  # AL2 is the standard EKS-optimised AMI family. Karpenter resolves the
+  # latest version for the cluster's k8s version automatically via SSM.
+  # In GovCloud (us-gov-west-1), use the AL2 FIPS variant if the cluster
+  # security baseline requires FIPS 140-2 validated crypto modules.
   amiFamily: AL2
-  # Karpenter resolves the latest EKS-optimised AMI for the cluster's k8s
-  # version automatically via SSM (GovCloud SSM endpoint is used when the
-  # cluster is in us-gov-west-1).
   amiSelectorTerms:
     - alias: al2@latest
 
   # ── Networking ─────────────────────────────────────────────────────────────
   subnetSelectorTerms:
     - tags:
-        karpenter.sh/discovery: "my-cluster"   # tag your private subnets with this
+        karpenter.sh/discovery: "dev-app-api-cl01"
   securityGroupSelectorTerms:
     - tags:
-        karpenter.sh/discovery: "my-cluster"
+        karpenter.sh/discovery: "dev-app-api-cl01"
 
   # ── IAM ────────────────────────────────────────────────────────────────────
   # Node IAM role must exist before Karpenter can launch instances.
-  # In GovCloud, ARNs use the aws-us-gov partition.
-  role: KarpenterNodeRole-my-cluster
+  role: KarpenterNodeRole-dev-app-api-cl01
 
   # ── Instance metadata (IMDSv2) ─────────────────────────────────────────────
-  # IMDSv2 is required in GovCloud / FedRAMP environments. Hop limit of 1
-  # prevents containers from reaching the metadata service directly.
+  # IMDSv2 enforced — hop limit of 1 prevents containers from reaching the
+  # metadata service directly (best practice; required in GovCloud/FedRAMP).
   metadataOptions:
     httpEndpoint: enabled
     httpProtocolIPv6: disabled
@@ -46,8 +42,9 @@ spec:
         iops: 3000
         throughput: 125
         encrypted: true
-        # kmsKeyID: arn:aws-us-gov:kms:us-gov-west-1:ACCOUNT:key/KEY-ID
-        # Uncomment and set the CMK ARN for FIPS / FedRAMP High environments.
+        # kmsKeyID: arn:aws:kms:us-east-1:ACCOUNT:key/KEY-ID
+        # Uncomment and set the CMK ARN for customer-managed key encryption.
+        # In GovCloud: arn:aws-us-gov:kms:us-gov-west-1:ACCOUNT:key/KEY-ID
         deleteOnTermination: true
 
   # ── User data ──────────────────────────────────────────────────────────────

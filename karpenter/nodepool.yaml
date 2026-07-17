@@ -30,9 +30,8 @@ spec:
           values: ["on-demand"]
 
         # ── Architecture ──────────────────────────────────────────────────────
-        # x86_64 only. Graviton (arm64) availability in us-gov-west-1 is more
-        # limited and the EKS-optimised AL2 Graviton AMIs have fewer GovCloud
-        # validation records. Revisit when arm64 is better established there.
+        # x86_64 only. Graviton (arm64) is worth revisiting for cost savings
+        # but requires a separate arm64 image build.
         - key: kubernetes.io/arch
           operator: In
           values: ["amd64"]
@@ -65,10 +64,9 @@ spec:
             - m6i.large      # 2 vCPU  / 8 GB
             - m6i.xlarge     # 4 vCPU  / 16 GB
 
-        # Restrict to GovCloud region.
         - key: topology.kubernetes.io/region
           operator: In
-          values: ["us-gov-west-1"]
+          values: ["us-east-1"]
 
       # ── Taints ────────────────────────────────────────────────────────────
       # Taint nodes so only pods with the matching toleration (in values.yaml)

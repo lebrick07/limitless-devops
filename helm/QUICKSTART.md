@@ -116,3 +116,28 @@ kubectl get svc -n ingress-nginx ingress-nginx-controller \
 ```bash
 curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 ```
+
+---
+
+## Karpenter
+
+The `karpenter/` directory contains `nodepool.yaml` and `ec2nodeclass.yaml` for this workload.
+These are evaluated as code — Karpenter must be installed on the cluster first.
+
+**Key design decisions:**
+
+| Decision | Choice | Why |
+|---|---|---|
+| Capacity type | On-demand only | Spot gives 2-min notice — not enough to drain open WebSocket connections |
+| Instance families | c6i, m6i | Balanced CPU+memory for the BEAM; m6i for high connection counts |
+| Consolidation | `WhenEmpty` | `WhenUnderutilized` evicts pods and drops active connections |
+| Node expiry | 30 days | Forces AMI/kernel rotation without manual drain cycles |
+
+**Apply (after Karpenter is installed on the cluster):**
+
+```bash
+kubectl apply -f karpenter/ec2nodeclass.yaml
+kubectl apply -f karpenter/nodepool.yaml
+```
+
+The NodePool taints nodes with `workload=phoenix-liveview:NoSchedule`. The matching toleration is already set in `values-eks.yaml` so Phoenix pods schedule onto Karpenter nodes automatically.
