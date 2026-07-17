@@ -4,13 +4,12 @@ metadata:
   name: phoenix-liveview
 spec:
   # ── AMI ────────────────────────────────────────────────────────────────────
-  # AL2 is the standard EKS-optimised AMI family. Karpenter resolves the
-  # latest version for the cluster's k8s version automatically via SSM.
-  # In GovCloud (us-gov-west-1), use the AL2 FIPS variant if the cluster
-  # security baseline requires FIPS 140-2 validated crypto modules.
-  amiFamily: AL2
+  # AL2023 is required for EKS 1.36+. AL2 AMIs are not published for k8s
+  # versions beyond 1.32. Karpenter resolves the latest AMI for the cluster's
+  # k8s version automatically.
+  amiFamily: AL2023
   amiSelectorTerms:
-    - alias: al2@latest
+    - alias: al2023@latest
 
   # ── Networking ─────────────────────────────────────────────────────────────
   subnetSelectorTerms:
