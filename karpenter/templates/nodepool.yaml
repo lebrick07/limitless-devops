@@ -58,15 +58,13 @@ spec:
         - key: node.kubernetes.io/instance-type
           operator: In
           values:
-            - c6i.large      # 2 vCPU  / 4 GB
-            - c6i.xlarge     # 4 vCPU  / 8 GB
-            - c6i.2xlarge    # 8 vCPU  / 16 GB
-            - m6i.large      # 2 vCPU  / 8 GB
-            - m6i.xlarge     # 4 vCPU  / 16 GB
+            {{- range .Values.instanceTypes }}
+            - {{ . }}
+            {{- end }}
 
         - key: topology.kubernetes.io/region
           operator: In
-          values: ["us-east-1"]
+          values: ["{{ .Values.region }}"]
 
       # ── Taints ────────────────────────────────────────────────────────────
       # Taint nodes so only pods with the matching toleration (in values.yaml)
@@ -94,5 +92,5 @@ spec:
 
   # ── Resource limits ─────────────────────────────────────────────────────────
   limits:
-    cpu: "128"       # ~16 x c6i.xlarge equivalent
-    memory: 512Gi
+    cpu: {{ .Values.limits.cpu | quote }}
+    memory: {{ .Values.limits.memory }}

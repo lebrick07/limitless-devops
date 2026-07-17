@@ -15,14 +15,14 @@ spec:
   # ── Networking ─────────────────────────────────────────────────────────────
   subnetSelectorTerms:
     - tags:
-        karpenter.sh/discovery: "dev-app-api-cl01"
+        karpenter.sh/discovery: "{{ .Values.clusterName }}"
   securityGroupSelectorTerms:
     - tags:
-        karpenter.sh/discovery: "dev-app-api-cl01"
+        karpenter.sh/discovery: "{{ .Values.clusterName }}"
 
   # ── IAM ────────────────────────────────────────────────────────────────────
   # Node IAM role must exist before Karpenter can launch instances.
-  role: KarpenterNodeRole-dev-app-api-cl01
+  role: {{ .Values.nodeRole }}
 
   # ── Instance metadata (IMDSv2) ─────────────────────────────────────────────
   # IMDSv2 enforced — hop limit of 1 prevents containers from reaching the

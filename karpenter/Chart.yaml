@@ -1,0 +1,5 @@
+apiVersion: v2
+name: karpenter-config
+description: Karpenter NodePool and EC2NodeClass for the phoenix-liveview workload
+type: application
+version: 0.1.0

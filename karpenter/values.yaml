@@ -1,0 +1,15 @@
+clusterName: dev-app-api-cl01
+region: us-east-1
+
+nodeRole: KarpenterNodeRole-dev-app-api-cl01
+
+instanceTypes:
+  - c6i.large
+  - c6i.xlarge
+  - c6i.2xlarge
+  - m6i.large
+  - m6i.xlarge
+
+limits:
+  cpu: "128"
+  memory: 512Gi
