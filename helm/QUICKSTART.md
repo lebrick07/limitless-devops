@@ -57,7 +57,6 @@ aws ecr-public get-login-password --region us-east-1 | \
 docker build \
   -f ../limitless-devops/Dockerfile \
   -t public.ecr.aws/m8k1g5q8/phoenix-liveview-demo:v1.0.0 \
-  -t public.ecr.aws/m8k1g5q8/phoenix-liveview-demo:latest \
   .
 ```
 
@@ -65,7 +64,6 @@ docker build \
 
 ```bash
 docker push public.ecr.aws/m8k1g5q8/phoenix-liveview-demo:v1.0.0
-docker push public.ecr.aws/m8k1g5q8/phoenix-liveview-demo:latest
 ```
 
 ### 5. Deploy with Helm
