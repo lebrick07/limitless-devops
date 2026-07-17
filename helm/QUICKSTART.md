@@ -136,10 +136,14 @@ kubectl get svc -n ingress-nginx ingress-nginx-controller \
   -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
 ```
 
-**Install Helm in CloudShell (if missing):**
+**Install Helm in CloudShell (persists across sessions):**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+mkdir -p ~/bin
+curl -fsSL -o /tmp/get-helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+chmod +x /tmp/get-helm.sh
+HELM_INSTALL_DIR=~/bin USE_SUDO=false /tmp/get-helm.sh
+echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
 ```
 
 ---
