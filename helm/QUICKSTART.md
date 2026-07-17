@@ -33,17 +33,13 @@ The database is created, migrated, and seeded with 1 000 users automatically on 
 ### 1. Build and push the image (run in AWS CloudShell)
 
 ```bash
-git clone https://github.com/chrismccord/phoenix_live_view_example
 git clone https://github.com/lebrick07/limitless-devops
-cp limitless-devops/runtime.exs phoenix_live_view_example/
-cp limitless-devops/page_live.ex phoenix_live_view_example/page_live.ex
+cd limitless-devops
 
 aws ecr-public get-login-password --region us-east-1 | \
   docker login --username AWS --password-stdin public.ecr.aws
 
-cd phoenix_live_view_example
-docker build -f ../limitless-devops/Dockerfile \
-  -t public.ecr.aws/m8k1g5q8/phoenix-liveview-demo:v1.0.0 .
+docker build -t public.ecr.aws/m8k1g5q8/phoenix-liveview-demo:v1.0.0 .
 docker push public.ecr.aws/m8k1g5q8/phoenix-liveview-demo:v1.0.0
 ```
 
