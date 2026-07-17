@@ -12,9 +12,9 @@
 replicaCount: 1   # single replica is enough for local testing
 
 image:
-  repository: phoenix-demo
-  tag: local
-  pullPolicy: Never   # use the locally built image, don't try to pull from a registry
+  repository: public.ecr.aws/m8k1g5q8/phoenix-liveview-demo
+  tag: v1.0.0
+  pullPolicy: IfNotPresent
 
 env:
   PHX_HOST: localhost
