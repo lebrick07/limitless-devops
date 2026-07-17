@@ -15,7 +15,7 @@
 FROM hexpm/elixir:1.14.5-erlang-25.3.2-debian-bullseye-20230227-slim AS builder
 
 RUN apt-get update -y && \
-    apt-get install -y --no-install-recommends build-essential git curl && \
+    apt-get install -y --no-install-recommends build-essential git curl ca-certificates && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
