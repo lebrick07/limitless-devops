@@ -2,6 +2,8 @@
 
 Deployment infrastructure for the [Phoenix LiveView example app](https://github.com/chrismccord/phoenix_live_view_example). Target environment: AWS GovCloud (us-gov-west-1) on EKS with Karpenter.
 
+**On time budget:** The core submission — Dockerfile, Helm chart, Karpenter manifests, and this README — was completed within the 9-hour target. After submission I chose to go further: provisioning a real EKS cluster using Terraform I developed myself ([github.com/lebrick07/eks_deploy](https://github.com/lebrick07/eks_deploy)), deploying Karpenter end-to-end, and validating the full stack live at `phoenix.autometalabs.io`. That work is detailed in a follow-up email to the team. The optional bonus items (load test, custom-metrics HPA, working multi-replica) were deliberately deferred in favour of getting the core right.
+
 ---
 
 ## Deploy
@@ -61,6 +63,8 @@ Installs only the shared libraries BEAM needs at runtime: `libstdc++6`, `openssl
 
 A non-root user (`uid=1000`) owns the release. `readOnlyRootFilesystem: true` is set; `/tmp` is mounted as an `emptyDir` for crash dumps.
 
+The Kubernetes Deployment mirrors this at the pod level via `securityContext`: `runAsNonRoot: true`, `runAsUser: 1000`, `allowPrivilegeEscalation: false`, and `readOnlyRootFilesystem: true`. These are set at the container level so they are enforced by the kubelet regardless of what the image declares.
+
 **What runs as PID 1**: `bin/demo start` — the OTP release entry point. The BEAM VM handles `SIGTERM` natively by calling `:init.stop()`, which triggers a supervised OTP shutdown. No `tini`/`dumb-init` is needed: the container has a single process tree and OTP manages it.
 
 ---
@@ -108,6 +112,18 @@ strategy:
 ```
 
 A new pod must pass readiness before an old one starts its drain. Combined with the PDB (`minAvailable: 2`), no deploy can reduce available capacity below 2 pods.
+
+### Service type and ingress
+
+The Service is `ClusterIP` — the right choice for a LiveView application sitting behind an ingress controller. A `LoadBalancer` Service would expose the app directly through an AWS Classic ELB, which does not handle the WebSocket upgrade natively and adds an unnecessary network hop. `ClusterIP` keeps routing internal; the nginx ingress controller handles the WebSocket upgrade via:
+
+```yaml
+nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+```
+
+`proxy-http-version: 1.1` is required — HTTP/1.0 does not support the `Upgrade` header that WebSocket handshakes depend on. The 3600-second timeouts prevent nginx from closing idle-but-connected LiveView sockets during quiet periods.
 
 ---
 
@@ -243,3 +259,5 @@ Spot instances receive a **2-minute interruption notice**. Our drain window is `
 - **IMDSv2 hop limit**: the default hop limit of 2 allows containers to reach the instance metadata service. Setting it to 1 restricts access to the host network namespace — important in a multi-tenant cluster and required in some GovCloud security baselines.
 - **FIPS in GovCloud**: AL2 has a FIPS mode but it is not the default AMI. Whether BEAM's OpenSSL bindings are FIPS-validated depends on the OS-level OpenSSL. Took this on faith for the submission — would verify with the security team before a real FedRAMP deployment.
 - **WhenEmpty vs WhenUnderutilized consolidation**: initially planned `WhenUnderutilized`, then worked through the eviction path and realised it would disrupt WebSocket connections. Switched to `WhenEmpty` once I understood that pod eviction (not just rescheduling) is what triggers the drain.
+- **AL2 AMIs not available for EKS 1.36+**: the EC2NodeClass initially used `amiFamily: AL2` and `alias: al2@latest`. On a live EKS 1.36.2 cluster the controller logged `failed to discover any AMIs` and the NodeClass went Unknown. AWS stopped publishing AL2 node AMIs beyond k8s 1.32 — AL2023 is required for any cluster running 1.33 or later. Took this on faith from the Karpenter docs; confirmed by the controller log.
+- **Karpenter v1 API field changes**: two breaking changes from pre-v1 manifests — `nodeClassRef` changed from an `apiVersion` field to a `group` field, and `expireAfter` moved from `spec.disruption` to `spec.template.spec`. Both failures surfaced as validation errors on install and were fixed by reading the v1 API reference.
