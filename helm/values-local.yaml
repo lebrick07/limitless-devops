@@ -1,15 +1,4 @@
-# Local testing overrides — use with:
-#   helm install phoenix-demo ./helm -f helm/values-local.yaml \
-#     --set secretEnv.DATABASE_URL="..." \
-#     --set secretEnv.SECRET_KEY_BASE="$(mix phx.gen.secret)"
-#
-# Prerequisites:
-#   1. Docker Desktop with Kubernetes enabled
-#   2. kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.1/deploy/static/provider/cloud/deploy.yaml
-#   3. docker build -t phoenix-demo:local .   (run from phoenix_live_view_example/)
-#   4. Access the app at http://localhost after helm install
-
-replicaCount: 1   # single replica is enough for local testing
+replicaCount: 1
 
 image:
   repository: public.ecr.aws/m8k1g5q8/phoenix-liveview-demo
@@ -22,11 +11,19 @@ env:
   POOL_SIZE: "2"
   DATABASE_SSL: "false"
 
-# In-cluster Postgres — deployed via: helm install postgres bitnami/postgresql
-#   --set auth.username=demo --set auth.password=demo --set auth.database=demo
-#   --set primary.persistence.enabled=false
 secretEnv:
-  DATABASE_URL: "ecto://demo:demo@postgres-postgresql.default.svc.cluster.local/demo"
+  DATABASE_URL: "ecto://demo:demo@postgres.default.svc.cluster.local/demo"
+
+postgresql:
+  enabled: true
+  auth:
+    username: demo
+    password: demo
+    database: demo
+  primary:
+    persistence:
+      enabled: false
+
 
 ingress:
   enabled: true
@@ -35,21 +32,18 @@ ingress:
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"   # no TLS locally
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
   hosts:
     - host: localhost
       paths:
         - path: /
           pathType: Prefix
-  tls: []   # no TLS for local testing
+  tls: []
 
-# Disable HPA — not useful with a single replica locally
 autoscaling:
   enabled: false
 
-# Relax PDB for single replica
 podDisruptionBudget:
   enabled: false
 
-# No Karpenter taint locally — Docker Desktop has no workload-tainted nodes
 tolerations: []

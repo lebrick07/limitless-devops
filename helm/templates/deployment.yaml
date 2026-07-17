@@ -47,6 +47,58 @@ spec:
       # terminationGracePeriodSeconds (90) > preStop (15) + Cowboy drain (60) + margin (15)
       terminationGracePeriodSeconds: 90
 
+      initContainers:
+        {{- if .Values.postgresql.enabled }}
+        - name: wait-for-postgres
+          image: postgres:15-alpine
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -h postgres -U {{ .Values.postgresql.auth.username }}; do
+                echo "waiting for postgres..."; sleep 2;
+              done
+        {{- end }}
+        - name: migrate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - bin/demo
+            - eval
+            - |
+              {:ok, _} = Application.ensure_all_started(:ssl);
+              {:ok, _} = Application.ensure_all_started(:postgrex);
+              {:ok, _} = Application.ensure_all_started(:ecto_sql);
+              Demo.Repo.__adapter__().storage_up(Demo.Repo.config());
+              {:ok, _} = Demo.Repo.start_link();
+              Ecto.Migrator.run(Demo.Repo, :up, all: true);
+              Demo.Repo.aggregate(Demo.Accounts.User, :count) |> case do
+                0 -> for i <- 1..1000, do: Demo.Accounts.create_user(%{username: "user#{i}", name: "User #{i}", email: "user#{i}@test", phone_number: "555-555-5555"});
+                _ -> :already_seeded
+              end
+          env:
+            - name: PHX_HOST
+              value: {{ .Values.env.PHX_HOST | quote }}
+            - name: PORT
+              value: {{ .Values.env.PORT | quote }}
+            - name: DATABASE_SSL
+              value: {{ .Values.env.DATABASE_SSL | quote }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "phoenix-liveview-demo.fullname" . }}-secrets
+                  key: DATABASE_URL
+            - name: SECRET_KEY_BASE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "phoenix-liveview-demo.fullname" . }}-secrets
+                  key: SECRET_KEY_BASE
+            - name: ERL_CRASH_DUMP
+              value: /tmp/erl_crash.dump
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+
       containers:
         - name: {{ .Chart.Name }}
           securityContext:

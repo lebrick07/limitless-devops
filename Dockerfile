@@ -72,7 +72,8 @@ RUN apt-get update -y && \
       openssl \
       libncurses5 \
       locales \
-      ca-certificates && \
+      ca-certificates \
+      procps && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Locale required for Erlang string handling.

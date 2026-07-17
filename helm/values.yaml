@@ -81,12 +81,24 @@ env:
 
 # Secret keys — values populated via external-secrets or manual kubectl.
 # Secret values — must be provided at deploy time, never committed.
-# For local testing, values-local.yaml provides DATABASE_URL pointing at
-# an in-cluster Postgres (bitnami/postgresql). For EKS, point at RDS:
+# For local testing, values-local.yaml enables the postgresql subchart.
+# For EKS, set postgresql.enabled=false and point at RDS:
 #   --set secretEnv.DATABASE_URL="ecto://USER:PASS@rds-host.us-gov-west-1.rds.amazonaws.com/DATABASE"
 secretEnv:
   DATABASE_URL: ""      # ecto://USER:PASS@HOST/DATABASE
   SECRET_KEY_BASE: ""   # mix phx.gen.secret
+
+# Bundled Postgres — disabled in production (use RDS).
+# Enabled via values-local.yaml for local Docker Desktop testing.
+postgresql:
+  enabled: false
+  auth:
+    username: demo
+    password: demo
+    database: demo
+  primary:
+    persistence:
+      enabled: true
 
 autoscaling:
   enabled: true
