@@ -42,7 +42,9 @@ COPY runtime.exs config/runtime.exs
 
 # --- Asset compilation ---
 COPY priv priv
-COPY priv/static/images/phoenix.png priv/static/images/phoenix.png
+RUN mkdir -p priv/static/images && \
+    curl -sSfLk https://github.com/phoenixframework/phoenix/raw/v1.6.16/priv/static/phoenix.png \
+         -o priv/static/images/phoenix.png
 COPY assets assets
 # mix assets.deploy runs: esbuild default --minify && phx.digest
 # esbuild downloads its binary (~4 MB) on first run; layer-cached afterwards.
