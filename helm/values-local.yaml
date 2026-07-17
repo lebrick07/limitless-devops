@@ -22,6 +22,12 @@ env:
   POOL_SIZE: "2"
   DATABASE_SSL: "false"
 
+# In-cluster Postgres — deployed via: helm install postgres bitnami/postgresql
+#   --set auth.username=demo --set auth.password=demo --set auth.database=demo
+#   --set primary.persistence.enabled=false
+secretEnv:
+  DATABASE_URL: "ecto://demo:demo@postgres-postgresql.default.svc.cluster.local/demo"
+
 ingress:
   enabled: true
   className: nginx

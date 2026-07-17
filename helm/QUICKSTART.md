@@ -6,18 +6,23 @@
 # 1. Install the nginx ingress controller (one-time)
 kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.1/deploy/static/provider/cloud/deploy.yaml
 
-# 2. Clone this repo
+# 2. Install Postgres (one-time)
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm install postgres bitnami/postgresql \
+  --set auth.username=demo \
+  --set auth.password=demo \
+  --set auth.database=demo \
+  --set primary.persistence.enabled=false
+
+# 3. Clone this repo
 git clone https://github.com/lebrick07/limitless-devops && cd limitless-devops
 
-# 3. Deploy
+# 4. Deploy
 helm install phoenix-demo ./helm \
   -f helm/values-local.yaml \
-  --set secretEnv.SECRET_KEY_BASE="$(openssl rand -hex 64)" \
-  --set secretEnv.DATABASE_URL="ecto://user:pass@localhost/demo"
+  --set secretEnv.SECRET_KEY_BASE="$(openssl rand -hex 64)"
 
-# 4. Open http://localhost
+# 5. Open http://localhost
 ```
 
 The image is pulled automatically from ECR Public — no credentials or local build required.
-
-The LiveView demos (Snake, Thermostat, Clock, Pacman) work without a real database. DB-backed pages will show connection errors unless a real Postgres instance is provided via `DATABASE_URL`.
