@@ -2,7 +2,7 @@
 
 Deployment infrastructure for the [Phoenix LiveView example app](https://github.com/chrismccord/phoenix_live_view_example). Target environment: AWS GovCloud (us-gov-west-1) on EKS with Karpenter.
 
-**On time budget:** The core submission — Dockerfile, Helm chart, Karpenter manifests, and this README — was completed within the 9-hour target. After submission I chose to go further: provisioning a real EKS cluster using Terraform I developed myself ([github.com/lebrick07/eks_deploy](https://github.com/lebrick07/eks_deploy)), deploying Karpenter end-to-end, and validating the full stack live at `phoenix.autometalabs.io`. That work is detailed in a follow-up email to the team. The optional bonus items (load test, custom-metrics HPA, working multi-replica) were deliberately deferred in favour of getting the core right.
+**On time budget:** The core submission — Dockerfile, Helm chart, Karpenter manifests, and this README — took approximately 6–7 hours, comfortably within the 9-hour ceiling. I then chose to go further: provisioning a real EKS cluster using Terraform I developed myself ([github.com/lebrick07/eks_deploy](https://github.com/lebrick07/eks_deploy)), deploying Karpenter end-to-end, and validating the full stack live at `phoenix.autometalabs.io`. That additional work is detailed in a follow-up email. The optional bonus items (load test, custom-metrics HPA, working multi-replica) were deliberately deferred in favour of getting the core right.
 
 ---
 
@@ -42,6 +42,17 @@ helm/
       ec2nodeclass.yaml
 README.md               This file
 ```
+
+---
+
+## Assumptions
+
+The brief left a few things open; here is how I resolved each:
+
+- **Database**: The brief says to assume PostgreSQL is provided externally (RDS) and only wire connectivity. `values.yaml` (production defaults) has `postgresql.enabled: false` and expects `DATABASE_URL` injected via a Kubernetes Secret. The bundled `postgres:15-alpine` StatefulSet in `values-local.yaml` and `values-eks.yaml` is for local testing and the live EKS demo only — it is not the production path.
+- **GovCloud target**: The brief targets `us-gov-west-1`. The design accounts for GovCloud throughout — ARN partitions, FIPS AMI notes, IMDSv2 enforcement, VPC endpoint requirements — but the live demo runs in `us-east-1` to avoid GovCloud access constraints during development. See the GovCloud section below for the full list of what changes in production.
+- **Live cluster**: The brief states local kind or k3d is sufficient and Karpenter specs are evaluated as code, not by running them. I exceeded this deliberately — see the time budget note above.
+- **AI tools**: The brief explicitly permits AI assistants. I used Claude Code throughout for scaffolding, debugging, and iteration. Every design decision in this README is mine and I can defend it in the walkthrough.
 
 ---
 
@@ -229,12 +240,11 @@ Spot instances receive a **2-minute interruption notice**. Our drain window is `
 
 | Item | Reason |
 |------|--------|
-| Erlang distribution / libcluster | Requires deciding on headless Service strategy + testing cluster formation; deferred rather than half-implemented |
-| TLS certificate management | Cert-manager + ACM integration is cluster-specific; left as `secretName: phoenix-demo-tls` placeholder |
-| Ingress template | Added — `helm/templates/ingress.yaml` with WebSocket-ready nginx annotations. `values-local.yaml` disables TLS for local testing; `values.yaml` enables it for production. |
-| Prometheus / ServiceMonitor | Operator CRDs must exist in the cluster; added annotations for auto-discovery instead |
-| Health check endpoint | The app doesn't expose `/healthz`; using `/` as readiness target. A dedicated `/health` route would be cleaner |
-| Database migrations | `mix ecto.migrate` needs to run before deploy; a Kubernetes Job or init container is the right approach — deferred |
+| Erlang distribution / libcluster | Requires deciding on headless Service strategy + testing cluster formation; deferred rather than half-implemented. ServiceAccount template includes the commented RBAC as a starting point. |
+| TLS termination | ACM cert requested for `phoenix.autometalabs.io` (DNS validation pending); `ingress.tls` is configured in `values-eks.yaml` with the ARN placeholder. Not wired end-to-end within time budget. |
+| Prometheus / ServiceMonitor | Operator CRDs must exist in the cluster; added Prometheus scrape annotations for auto-discovery instead. Full `ServiceMonitor` requires the Prometheus Operator to be installed. |
+| Health check endpoint | The app doesn't expose `/healthz`; using `GET /` as readiness target. A dedicated `/health` route would be cleaner and decouple health from page rendering. |
+| Custom-metrics HPA | KEDA `ScaledObject` using `phoenix_live_view_socket_connected_total` is sketched in `hpa.yaml` (commented). Requires Prometheus + KEDA installed; deferred rather than half-implemented. |
 
 ---
 
@@ -251,13 +261,15 @@ Spot instances receive a **2-minute interruption notice**. Our drain window is `
 
 ## Discovery log
 
+Things I did not know coming in, roughly split between what I investigated deeply and what I took on faith.
+
 - **Elixir OTP releases vs. `mix phx.server`**: learned that `mix release` produces a self-contained binary with bundled ERTS. The critical gap I missed initially: `server: true` must be set in the config for the release to start the HTTP listener — `mix phx.server` does this automatically, the release does not. Found this in the upstream runtime.exs comment block.
 - **esbuild as a dev dependency**: `{:esbuild, ..., runtime: Mix.env() == :dev}` is not available when `mix deps.get --only prod` is run. Resolved by fetching all deps in the builder stage; the release only ships runtime deps regardless.
 - **Cowboy graceful drain**: investigated how Plug.Cowboy 2.x handles shutdown. Ranch (the TCP acceptor) exposes `shutdown_timeout` via `transport_options`. This was not obvious from the Phoenix docs — found it in the Ranch source and confirmed in Plug.Cowboy's `Plug.Cowboy.child_spec/1` documentation.
 - **Phoenix.PubSub local adapter**: assumed PubSub would "just work" across pods. Discovered it is process-local by default; distributed operation requires explicit Erlang clustering or an external adapter. The Presence module makes this a hard requirement for correct multi-replica behaviour.
 - **GovCloud instance availability**: not all instance types from `aws ec2 describe-instance-type-offerings` in us-east-1 exist in us-gov-west-1. Restricted NodePool to `c6i`/`m6i` after checking GovCloud instance type documentation.
 - **IMDSv2 hop limit**: the default hop limit of 2 allows containers to reach the instance metadata service. Setting it to 1 restricts access to the host network namespace — important in a multi-tenant cluster and required in some GovCloud security baselines.
-- **FIPS in GovCloud**: AL2 has a FIPS mode but it is not the default AMI. Whether BEAM's OpenSSL bindings are FIPS-validated depends on the OS-level OpenSSL. Took this on faith for the submission — would verify with the security team before a real FedRAMP deployment.
+- **FIPS in GovCloud** *(taken on faith)*: AL2 has a FIPS mode but it is not the default AMI. Whether BEAM's OpenSSL bindings are FIPS-validated depends on the OS-level OpenSSL. I noted the requirement in the EC2NodeClass and GovCloud table but did not verify the full chain — would confirm with the security team before a real FedRAMP deployment.
 - **WhenEmpty vs WhenUnderutilized consolidation**: initially planned `WhenUnderutilized`, then worked through the eviction path and realised it would disrupt WebSocket connections. Switched to `WhenEmpty` once I understood that pod eviction (not just rescheduling) is what triggers the drain.
 - **AL2 AMIs not available for EKS 1.36+**: the EC2NodeClass initially used `amiFamily: AL2` and `alias: al2@latest`. On a live EKS 1.36.2 cluster the controller logged `failed to discover any AMIs` and the NodeClass went Unknown. AWS stopped publishing AL2 node AMIs beyond k8s 1.32 — AL2023 is required for any cluster running 1.33 or later. Took this on faith from the Karpenter docs; confirmed by the controller log.
 - **Karpenter v1 API field changes**: two breaking changes from pre-v1 manifests — `nodeClassRef` changed from an `apiVersion` field to a `group` field, and `expireAfter` moved from `spec.disruption` to `spec.template.spec`. Both failures surfaced as validation errors on install and were fixed by reading the v1 API reference.
