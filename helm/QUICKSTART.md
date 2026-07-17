@@ -121,19 +121,15 @@ kubectl get pods -w
 
 ### One-time setup (new cluster)
 
-**nginx ingress controller (with ACM TLS):**
+**nginx ingress controller:**
 
 ```bash
-helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-helm repo update
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.0/deploy/static/provider/aws/deploy.yaml
+kubectl apply -f helm/nginx-ingress/configmap-eks.yaml
 
-helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
-  --namespace ingress-nginx --create-namespace \
-  -f helm/nginx-ingress/values-eks.yaml \
-  --wait
+kubectl rollout restart deployment ingress-nginx-controller -n ingress-nginx
+kubectl rollout status deployment ingress-nginx-controller -n ingress-nginx
 ```
-
-This wires the ACM cert (`phoenix.autometalabs.io`) to the ELB at install time — no manual `kubectl annotate` needed.
 
 **DNS:** Get the ELB hostname and add a CNAME in Route53:
 
