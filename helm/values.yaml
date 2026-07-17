@@ -1,9 +1,12 @@
 replicaCount: 3
 
 image:
-  repository: <ECR_ACCOUNT>.dkr.ecr.us-gov-west-1.amazonaws.com/phoenix-liveview-demo
+  # Demo image hosted on personal AWS account (us-east-1).
+  # In production, replace with GovCloud ECR:
+  #   <account>.dkr.ecr.us-gov-west-1.amazonaws.com/phoenix-liveview-demo
+  repository: 216026633254.dkr.ecr.us-east-1.amazonaws.com/phoenix-liveview-demo
   pullPolicy: IfNotPresent
-  tag: ""  # overridden by CI with the image SHA tag
+  tag: "v1.0.0"
 
 nameOverride: ""
 fullnameOverride: ""
