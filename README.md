@@ -16,22 +16,28 @@ See [helm/QUICKSTART.md](helm/QUICKSTART.md) for step-by-step local and EKS depl
 Dockerfile              Multi-stage production image build
 runtime.exs             Patched runtime config (server: true, Cowboy drain)
 page_live.ex            Upstream bug patch (live_dashboard_path removed)
-helm/                   Helm chart — all Kubernetes manifests
-  Chart.yaml
-  values.yaml           Production values (ECR image, 3 replicas, TLS, HPA, PDB)
-  values-local.yaml     Local override (ECR Public image, 1 replica, no TLS)
-  QUICKSTART.md         Step-by-step local setup instructions
-  templates/
-    deployment.yaml
-    service.yaml
-    ingress.yaml
-    hpa.yaml
-    pdb.yaml
-    serviceaccount.yaml
-    secret.yaml
-karpenter/
-  nodepool.yaml
-  ec2nodeclass.yaml
+helm/
+  QUICKSTART.md         Step-by-step deploy guide (local + EKS)
+  phoenix/              Phoenix LiveView app Helm chart
+    Chart.yaml
+    values.yaml         Production defaults (ECR image, HPA, PDB)
+    values-local.yaml   Docker Desktop override
+    values-eks.yaml     EKS override
+    templates/
+      deployment.yaml
+      service.yaml
+      ingress.yaml
+      hpa.yaml
+      pdb.yaml
+      serviceaccount.yaml
+      secret.yaml
+  karpenter/            Karpenter NodePool + EC2NodeClass Helm chart
+    Chart.yaml
+    values.yaml         Default values (cluster name, region, instance types)
+    values-controller.yaml  Values for the upstream Karpenter controller chart
+    templates/
+      nodepool.yaml
+      ec2nodeclass.yaml
 README.md               This file
 ```
 
