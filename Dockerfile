@@ -15,7 +15,7 @@
 FROM hexpm/elixir:1.14.5-erlang-25.3.2-debian-bullseye-20230227-slim AS builder
 
 RUN apt-get update -y && \
-    apt-get install -y --no-install-recommends build-essential git && \
+    apt-get install -y --no-install-recommends build-essential git curl && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -42,6 +42,11 @@ COPY runtime.exs config/runtime.exs
 
 # --- Asset compilation ---
 COPY priv priv
+# The upstream repo omits priv/static/images/ entirely. Download the logo so
+# the /image LiveView and the nav logo render correctly in production.
+RUN mkdir -p priv/static/images && \
+    curl -sSfL https://github.com/phoenixframework/phoenix/raw/v1.6.16/priv/static/phoenix.png \
+         -o priv/static/images/phoenix.png
 COPY assets assets
 # mix assets.deploy runs: esbuild default --minify && phx.digest
 # esbuild downloads its binary (~4 MB) on first run; layer-cached afterwards.
@@ -73,7 +78,10 @@ RUN apt-get update -y && \
       libncurses5 \
       locales \
       ca-certificates \
-      procps && \
+      procps \
+      dict \
+      dict-wn \
+      wamerican && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Locale required for Erlang string handling.
