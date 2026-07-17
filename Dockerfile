@@ -42,11 +42,7 @@ COPY runtime.exs config/runtime.exs
 
 # --- Asset compilation ---
 COPY priv priv
-# The upstream repo omits priv/static/images/ entirely. Download the logo so
-# the /image LiveView and the nav logo render correctly in production.
-RUN mkdir -p priv/static/images && \
-    curl -sSfL https://github.com/phoenixframework/phoenix/raw/v1.6.16/priv/static/phoenix.png \
-         -o priv/static/images/phoenix.png
+COPY priv/static/images/phoenix.png priv/static/images/phoenix.png
 COPY assets assets
 # mix assets.deploy runs: esbuild default --minify && phx.digest
 # esbuild downloads its binary (~4 MB) on first run; layer-cached afterwards.
