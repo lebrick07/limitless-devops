@@ -45,11 +45,9 @@ ingress:
     # LiveView holds long-lived WebSocket connections — bump proxy timeouts.
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
-    # WebSocket upgrade support.
+    # WebSocket upgrade — nginx ingress handles Upgrade/Connection headers
+    # automatically when it detects a WebSocket connection; no snippet needed.
     nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
-    nginx.ingress.kubernetes.io/configuration-snippet: |
-      proxy_set_header Upgrade $http_upgrade;
-      proxy_set_header Connection "upgrade";
     # TLS termination at the ingress; backend speaks plain HTTP.
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
   hosts:
