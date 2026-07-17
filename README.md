@@ -2,7 +2,7 @@
 
 Deployment infrastructure for the [Phoenix LiveView example app](https://github.com/chrismccord/phoenix_live_view_example). Target environment: AWS GovCloud (us-gov-west-1) on EKS with Karpenter.
 
-**On time budget:** The core submission — Dockerfile, Helm chart, Karpenter manifests, and this README — took approximately 6–7 hours, comfortably within the 9-hour ceiling. I then chose to go further: provisioning a real EKS cluster using Terraform I developed myself ([github.com/lebrick07/eks_deploy](https://github.com/lebrick07/eks_deploy)), deploying Karpenter end-to-end, and validating the full stack live at `phoenix.autometalabs.io`. That additional work is detailed in a follow-up email. The optional bonus items (load test, custom-metrics HPA, working multi-replica) were deliberately deferred in favour of getting the core right.
+**On time budget:** Total active working time was approximately 4 hours. The commit history spans a longer wall-clock window because I stopped after completing the core deliverables, took a significant break while deciding whether to attempt the live EKS deployment, then came back and did it. The core submission — Dockerfile, Helm chart, Karpenter manifests, and this README — was done in the first session, well within the 9-hour ceiling. The second session added the live EKS cluster (provisioned via Terraform I developed myself: [github.com/lebrick07/eks_deploy](https://github.com/lebrick07/eks_deploy)), end-to-end Karpenter deployment, and validation at `phoenix.autometalabs.io`. That work is covered in a follow-up email. The optional bonus items (load test, custom-metrics HPA, working multi-replica) were deliberately deferred in favour of getting the core right.
 
 ---
 
