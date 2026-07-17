@@ -1,0 +1,49 @@
+replicaCount: 1
+
+image:
+  repository: public.ecr.aws/m8k1g5q8/phoenix-liveview-demo
+  tag: "v1.0.0"
+  pullPolicy: Always
+
+env:
+  PHX_HOST: phoenix.autometalabs.io
+  PORT: "4000"
+  POOL_SIZE: "2"
+  DATABASE_SSL: "false"
+
+secretEnv:
+  DATABASE_URL: "ecto://demo:demo@postgres.default.svc.cluster.local/demo"
+  SECRET_KEY_BASE: ""   # generated at deploy time — see deploy command below
+
+postgresql:
+  enabled: true
+  auth:
+    username: demo
+    password: demo
+    database: demo
+  primary:
+    persistence:
+      enabled: false
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+  hosts:
+    - host: phoenix.autometalabs.io
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+autoscaling:
+  enabled: false
+
+podDisruptionBudget:
+  enabled: false
+
+tolerations: []
