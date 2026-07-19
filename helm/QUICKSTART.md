@@ -42,7 +42,39 @@ The database is created, migrated, and seeded with 1 000 users automatically on 
 
 > **Note:** CloudShell runs on linux/amd64 — required to avoid a platform mismatch with EKS x86_64 nodes when building on Apple Silicon.
 
+### Prerequisites (one-time CloudShell setup)
+
+**Helm** (persists in `~/bin` across sessions):
+
+```bash
+mkdir -p ~/bin
+curl -fsSL -o /tmp/get-helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+chmod +x /tmp/get-helm.sh
+HELM_INSTALL_DIR=~/bin USE_SUDO=false /tmp/get-helm.sh
+echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
+```
+
+**Terraform** (persists in `~/bin` across sessions):
+
+```bash
+curl -fsSL https://releases.hashicorp.com/terraform/1.10.5/terraform_1.10.5_linux_amd64.zip \
+  -o /tmp/terraform.zip
+unzip /tmp/terraform.zip -d ~/bin && rm /tmp/terraform.zip
+```
+
+**Clone repos** (one-time):
+
+```bash
+mkdir -p ~/github
+git clone https://github.com/Autometa-Labs/eks_deploy ~/github/eks_deploy
+git clone https://github.com/lebrick07/limitless-devops ~/github/limitless-devops
+```
+
+---
+
 ### 1. Provision the EKS cluster (Terraform)
+
+Infra repo: [Autometa-Labs/eks_deploy](https://github.com/Autometa-Labs/eks_deploy)
 
 ```bash
 cd ~/github/eks_deploy/infra_deploy/dev
@@ -67,6 +99,8 @@ cd ~/github/limitless-devops && git pull
 ```
 
 ### 4. Build the image
+
+> **Skip steps 4–5 if the image is already in ECR Public** (i.e. no code changes since last push). The deploy in step 9 pulls the existing image automatically.
 
 > If disk space runs out: `docker system prune -af`
 
@@ -177,16 +211,6 @@ helm upgrade ingress-nginx ingress-nginx/ingress-nginx \
 ```
 
 The ELB hostname stays the same — no Route53 change needed.
-
-### Install Helm in CloudShell (persists across sessions)
-
-```bash
-mkdir -p ~/bin
-curl -fsSL -o /tmp/get-helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
-chmod +x /tmp/get-helm.sh
-HELM_INSTALL_DIR=~/bin USE_SUDO=false /tmp/get-helm.sh
-echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
-```
 
 ---
 
