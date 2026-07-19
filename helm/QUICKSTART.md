@@ -135,6 +135,8 @@ helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
 
 This wires the ACM cert to the ELB at install time — no manual steps needed.
 
+> **Note:** `backend-protocol: tcp` is required (not `http`). Classic ELBs strip `Connection: Upgrade` / `Upgrade: websocket` headers in HTTP mode, which prevents Phoenix LiveView WebSocket connections. TCP mode passes the raw decrypted stream to nginx with all headers intact.
+
 **Rollback to HTTP-only (if HTTPS causes issues):**
 
 ```bash
