@@ -6,6 +6,3 @@ controller:
       service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"
     targetPorts:
       https: http   # ELB terminates TLS; forward decrypted HTTP to nginx's port 80
-  config:
-    use-forwarded-headers: "true"    # trust X-Forwarded-Proto from ELB
-    compute-full-forwarded-for: "true"
