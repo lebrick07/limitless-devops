@@ -146,11 +146,25 @@ kubectl get pods -w
 
 ### DNS
 
-Get the ELB hostname and add a CNAME in Route53:
+Get the ELB hostname and upsert the Route53 CNAME in one shot:
 
 ```bash
-kubectl get svc -n ingress-nginx ingress-nginx-controller \
-  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+ELB_HOSTNAME=$(kubectl get svc -n ingress-nginx ingress-nginx-controller \
+  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+
+aws route53 change-resource-record-sets \
+  --hosted-zone-id Z00700503JFGXII6MMCA9 \
+  --change-batch "{
+    \"Changes\": [{
+      \"Action\": \"UPSERT\",
+      \"ResourceRecordSet\": {
+        \"Name\": \"phoenix.autometalabs.io\",
+        \"Type\": \"CNAME\",
+        \"TTL\": 60,
+        \"ResourceRecords\": [{\"Value\": \"$ELB_HOSTNAME\"}]
+      }
+    }]
+  }"
 ```
 
 ### Rollback to HTTP-only
