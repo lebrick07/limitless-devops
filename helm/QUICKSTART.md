@@ -4,9 +4,10 @@
 
 ```
 helm/
-  phoenix/          Phoenix LiveView app chart
-  karpenter/        Karpenter NodePool + EC2NodeClass chart
-  QUICKSTART.md     This file
+  phoenix/           Phoenix LiveView app chart
+  karpenter/         Karpenter NodePool + EC2NodeClass chart
+  nginx-ingress/     nginx ingress controller Helm values + rollback file
+  QUICKSTART.md      This file
 ```
 
 ---
@@ -53,13 +54,19 @@ terraform apply
 
 > To tear down: `terraform destroy`
 
-### 2. Pull latest app code
+### 2. Configure kubectl
+
+```bash
+aws eks update-kubeconfig --name dev-app-api-cl01 --region us-east-1
+```
+
+### 3. Pull latest app code
 
 ```bash
 cd ~/github/limitless-devops && git pull
 ```
 
-### 3. Build the image
+### 4. Build the image
 
 > If disk space runs out: `docker system prune -af`
 
@@ -70,15 +77,33 @@ aws ecr-public get-login-password --region us-east-1 | \
 docker build -t public.ecr.aws/m8k1g5q8/phoenix-liveview-demo:v1.0.0 .
 ```
 
-### 4. Push to ECR Public
+### 5. Push to ECR Public
 
 ```bash
 docker push public.ecr.aws/m8k1g5q8/phoenix-liveview-demo:v1.0.0
 ```
 
-### 5. Install Karpenter controller (one-time)
+### 6. Install nginx ingress controller (with ACM TLS)
 
 ```bash
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo update
+
+helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+  --namespace ingress-nginx --create-namespace \
+  -f helm/nginx-ingress/values-eks.yaml \
+  --wait
+```
+
+> **Note:** `backend-protocol: tcp` is required (not `http`). Classic ELBs strip WebSocket upgrade headers in HTTP mode. TCP mode passes the raw decrypted stream through, keeping WebSocket intact.
+
+### 7. Install Karpenter controller
+
+```bash
+# Authenticate to ECR Public first (required for OCI Helm registry)
+aws ecr-public get-login-password --region us-east-1 | \
+  helm registry login --username AWS --password-stdin public.ecr.aws
+
 helm upgrade --install karpenter oci://public.ecr.aws/karpenter/karpenter \
   --version "1.3.3" \
   --namespace karpenter --create-namespace \
@@ -86,14 +111,14 @@ helm upgrade --install karpenter oci://public.ecr.aws/karpenter/karpenter \
   --wait
 ```
 
-### 6. Deploy Karpenter NodePool + EC2NodeClass
+### 8. Deploy Karpenter NodePool + EC2NodeClass
 
 ```bash
 helm upgrade --install karpenter-config ./helm/karpenter \
   --namespace karpenter
 ```
 
-### 7. Deploy the Phoenix app
+### 9. Deploy the Phoenix app
 
 ```bash
 # Fresh install
@@ -110,7 +135,7 @@ helm upgrade phoenix-demo ./helm/phoenix \
 helm uninstall phoenix-demo
 ```
 
-### 8. Watch it come up
+### 10. Watch it come up
 
 ```bash
 kubectl rollout status deployment/phoenix-demo-phoenix-liveview-demo
@@ -119,25 +144,16 @@ kubectl get pods -w
 
 ---
 
-### One-time setup (new cluster)
+### DNS
 
-**nginx ingress controller (with ACM TLS):**
+Get the ELB hostname and add a CNAME in Route53:
 
 ```bash
-helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-helm repo update
-
-helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
-  --namespace ingress-nginx --create-namespace \
-  -f helm/nginx-ingress/values-eks.yaml \
-  --wait
+kubectl get svc -n ingress-nginx ingress-nginx-controller \
+  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
 ```
 
-This wires the ACM cert to the ELB at install time — no manual steps needed.
-
-> **Note:** `backend-protocol: tcp` is required (not `http`). Classic ELBs strip `Connection: Upgrade` / `Upgrade: websocket` headers in HTTP mode, which prevents Phoenix LiveView WebSocket connections. TCP mode passes the raw decrypted stream to nginx with all headers intact.
-
-**Rollback to HTTP-only (if HTTPS causes issues):**
+### Rollback to HTTP-only
 
 ```bash
 helm upgrade ingress-nginx ingress-nginx/ingress-nginx \
@@ -146,16 +162,9 @@ helm upgrade ingress-nginx ingress-nginx/ingress-nginx \
   --wait
 ```
 
-The ELB hostname stays the same — no Route53 change needed. AWS removes the SSL listener in place.
+The ELB hostname stays the same — no Route53 change needed.
 
-**DNS:** Get the ELB hostname and add a CNAME in Route53:
-
-```bash
-kubectl get svc -n ingress-nginx ingress-nginx-controller \
-  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
-```
-
-**Install Helm in CloudShell (persists across sessions):**
+### Install Helm in CloudShell (persists across sessions)
 
 ```bash
 mkdir -p ~/bin
