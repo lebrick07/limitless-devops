@@ -135,6 +135,17 @@ helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
 
 This wires the ACM cert to the ELB at install time — no manual steps needed.
 
+**Rollback to HTTP-only (if HTTPS causes issues):**
+
+```bash
+helm upgrade ingress-nginx ingress-nginx/ingress-nginx \
+  --namespace ingress-nginx \
+  -f helm/nginx-ingress/values-eks-http.yaml \
+  --wait
+```
+
+The ELB hostname stays the same — no Route53 change needed. AWS removes the SSL listener in place.
+
 **DNS:** Get the ELB hostname and add a CNAME in Route53:
 
 ```bash
