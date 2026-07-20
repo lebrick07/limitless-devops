@@ -13,6 +13,10 @@ on:
         type: choice
         options: [cl01, cl02, cl03]
         default: cl01
+      skip_build:
+        description: 'Skip Docker build+push (use existing ECR image)'
+        type: boolean
+        default: true
       plan_only:
         description: 'Run terraform plan only (no apply, no deploy)'
         type: boolean
@@ -92,7 +96,7 @@ jobs:
   build-and-push:
     name: Build & push image
     runs-on: ubuntu-latest
-    if: ${{ inputs.plan_only != true }}
+    if: ${{ inputs.plan_only != true && inputs.skip_build != true }}
     steps:
       - name: Checkout app repo
         uses: actions/checkout@v4
@@ -119,7 +123,7 @@ jobs:
     name: Deploy apps to EKS
     runs-on: ubuntu-latest
     needs: [terraform, build-and-push]
-    if: ${{ inputs.plan_only != true }}
+    if: ${{ always() && inputs.plan_only != true && needs.terraform.result == 'success' && (needs.build-and-push.result == 'success' || needs.build-and-push.result == 'skipped') }}
     steps:
       - name: Checkout app repo
         uses: actions/checkout@v4
