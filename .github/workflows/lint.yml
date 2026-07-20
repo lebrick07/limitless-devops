@@ -1,0 +1,58 @@
+name: Lint & Security Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  ECR_IMAGE: public.ecr.aws/m8k1g5q8/phoenix-liveview-demo:v1.0.0
+
+jobs:
+  hadolint:
+    name: Dockerfile lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+
+  helm-lint:
+    name: Helm lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+      - name: Lint phoenix chart
+        run: helm lint helm/phoenix
+      - name: Lint karpenter chart
+        run: helm lint helm/karpenter
+      - name: Lint nginx-ingress values
+        run: helm lint helm/nginx-ingress --set controller.service.annotations={}
+
+  tfsec:
+    name: Terraform security scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout eks_deploy
+        uses: actions/checkout@v4
+        with:
+          repository: Autometa-Labs/eks_deploy
+          path: eks_deploy
+      - uses: aquasecurity/tfsec-action@v1.0.0
+        with:
+          working_directory: eks_deploy
+
+  trivy:
+    name: Image CVE scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.ECR_IMAGE }}
+          format: table
+          exit-code: 1
+          severity: CRITICAL
