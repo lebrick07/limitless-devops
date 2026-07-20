@@ -211,7 +211,6 @@ jobs:
               }]
             }"
           echo "Cluster live at https://${{ env.CLUSTER_HOST }}"
-          echo "Run the Cutover workflow to promote to phoenix.autometalabs.io"
 
       - name: Wait for rollout
         run: kubectl rollout status deployment/phoenix-demo-phoenix-liveview-demo --timeout=5m
