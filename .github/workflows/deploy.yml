@@ -3,17 +3,26 @@ name: Deploy EKS + Phoenix
 on:
   workflow_dispatch:
     inputs:
-      skip_build:
-        description: 'Skip Docker build+push (use existing ECR image)'
+      environment:
+        description: 'Target environment'
+        type: choice
+        options: [dev, staging, prod]
+        default: dev
+      cluster:
+        description: 'Cluster slot (blue/green)'
+        type: choice
+        options: [cl01, cl02, cl03]
+        default: cl01
+      plan_only:
+        description: 'Run terraform plan only (no apply, no deploy)'
         type: boolean
         default: false
 
 env:
   AWS_REGION: us-east-1
-  CLUSTER_NAME: dev-app-api-cl01
+  ACCOUNT_ID: 216026633254
   ECR_IMAGE: public.ecr.aws/m8k1g5q8/phoenix-liveview-demo:v1.0.0
   HOSTED_ZONE_ID: Z00700503JFGXII6MMCA9
-  PHOENIX_HOST: phoenix.autometalabs.io
 
 jobs:
   terraform:
@@ -37,18 +46,20 @@ jobs:
         uses: hashicorp/setup-terraform@v3
 
       - name: Terraform init
-        working-directory: eks_deploy/infra_deploy/dev
+        working-directory: eks_deploy/infra_deploy/${{ inputs.environment }}
         run: terraform init
 
       - name: Write tfvars
-        working-directory: eks_deploy/infra_deploy/dev
+        working-directory: eks_deploy/infra_deploy/${{ inputs.environment }}
         run: |
-          cat > terraform.tfvars << 'EOF'
-          vpc_name       = "dev-app-vpc"
-          region         = ["us-east-1"]
-          subnets        = ["dev-app-public-subnet-01", "dev-app-public-subnet-02"]
-          prefix         = "dev-app-"
-          cluster_prefix = "cl01"
+          ENV="${{ inputs.environment }}"
+          CLUSTER="${{ inputs.cluster }}"
+          cat > terraform.tfvars << EOF
+          vpc_name       = "${ENV}-app-vpc"
+          region         = ["${{ env.AWS_REGION }}"]
+          subnets        = ["${ENV}-app-public-subnet-01", "${ENV}-app-public-subnet-02"]
+          prefix         = "${ENV}-app-"
+          cluster_prefix = "${CLUSTER}"
           eks_version    = "1.30"
 
           worker_node_policy                   = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
@@ -69,14 +80,19 @@ jobs:
           ]
           EOF
 
+      - name: Terraform plan
+        working-directory: eks_deploy/infra_deploy/${{ inputs.environment }}
+        run: terraform plan
+
       - name: Terraform apply
-        working-directory: eks_deploy/infra_deploy/dev
+        if: ${{ inputs.plan_only != true }}
+        working-directory: eks_deploy/infra_deploy/${{ inputs.environment }}
         run: terraform apply -auto-approve
 
   build-and-push:
     name: Build & push image
     runs-on: ubuntu-latest
-    if: ${{ inputs.skip_build != true }}
+    if: ${{ inputs.plan_only != true }}
     steps:
       - name: Checkout app repo
         uses: actions/checkout@v4
@@ -103,10 +119,7 @@ jobs:
     name: Deploy apps to EKS
     runs-on: ubuntu-latest
     needs: [terraform, build-and-push]
-    if: |
-      always() &&
-      needs.terraform.result == 'success' &&
-      (needs.build-and-push.result == 'success' || needs.build-and-push.result == 'skipped')
+    if: ${{ inputs.plan_only != true }}
     steps:
       - name: Checkout app repo
         uses: actions/checkout@v4
@@ -117,6 +130,11 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set cluster vars
+        run: |
+          echo "CLUSTER_NAME=${{ inputs.environment }}-app-api-${{ inputs.cluster }}" >> $GITHUB_ENV
+          echo "CLUSTER_HOST=phoenix-${{ inputs.cluster }}.autometalabs.io" >> $GITHUB_ENV
 
       - name: Configure kubectl
         run: aws eks update-kubeconfig --name ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
@@ -138,6 +156,9 @@ jobs:
             --version "1.3.3" \
             --namespace karpenter --create-namespace \
             -f helm/karpenter/values-controller.yaml \
+            --set settings.clusterName=${{ env.CLUSTER_NAME }} \
+            --set settings.interruptionQueue=KarpenterInterruptionQueue-${{ env.CLUSTER_NAME }} \
+            --set 'serviceAccount.annotations.eks\.amazonaws\.com/role-arn=arn:aws:iam::${{ env.ACCOUNT_ID }}:role/KarpenterControllerRole-${{ env.CLUSTER_NAME }}' \
             --wait
 
       - name: Deploy Karpenter NodePool + EC2NodeClass
@@ -149,9 +170,10 @@ jobs:
         run: |
           helm upgrade --install phoenix-demo ./helm/phoenix \
             -f helm/phoenix/values-eks.yaml \
+            --set env.PHX_HOST=${{ env.CLUSTER_HOST }} \
             --set secretEnv.SECRET_KEY_BASE="$(openssl rand -hex 64)"
 
-      - name: Update Route53 CNAME
+      - name: Update Route53 CNAME for cluster slot
         run: |
           ELB_HOSTNAME=$(kubectl get svc -n ingress-nginx ingress-nginx-controller \
             -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
@@ -161,13 +183,15 @@ jobs:
               \"Changes\": [{
                 \"Action\": \"UPSERT\",
                 \"ResourceRecordSet\": {
-                  \"Name\": \"${{ env.PHOENIX_HOST }}\",
+                  \"Name\": \"${{ env.CLUSTER_HOST }}\",
                   \"Type\": \"CNAME\",
                   \"TTL\": 60,
                   \"ResourceRecords\": [{\"Value\": \"$ELB_HOSTNAME\"}]
                 }
               }]
             }"
+          echo "Cluster live at https://${{ env.CLUSTER_HOST }}"
+          echo "Run the Cutover workflow to promote to phoenix.autometalabs.io"
 
       - name: Wait for rollout
         run: kubectl rollout status deployment/phoenix-demo-phoenix-liveview-demo --timeout=5m

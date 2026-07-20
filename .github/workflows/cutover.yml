@@ -1,0 +1,69 @@
+name: Cutover to production
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Source environment'
+        type: choice
+        options: [dev, staging, prod]
+        default: dev
+      cluster:
+        description: 'Cluster slot to promote'
+        type: choice
+        options: [cl01, cl02, cl03]
+        default: cl01
+
+env:
+  AWS_REGION: us-east-1
+  HOSTED_ZONE_ID: Z00700503JFGXII6MMCA9
+
+jobs:
+  cutover:
+    name: Promote cluster to production CNAME
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set cluster vars
+        run: |
+          echo "CLUSTER_NAME=${{ inputs.environment }}-app-api-${{ inputs.cluster }}" >> $GITHUB_ENV
+          echo "CLUSTER_HOST=phoenix-${{ inputs.cluster }}.autometalabs.io" >> $GITHUB_ENV
+
+      - name: Configure kubectl
+        run: aws eks update-kubeconfig --name ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
+
+      - name: Get ELB hostname
+        run: |
+          ELB_HOSTNAME=$(kubectl get svc -n ingress-nginx ingress-nginx-controller \
+            -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          if [ -z "$ELB_HOSTNAME" ]; then
+            echo "ERROR: Could not retrieve ELB hostname. Is nginx-ingress deployed on ${{ env.CLUSTER_NAME }}?"
+            exit 1
+          fi
+          echo "ELB_HOSTNAME=$ELB_HOSTNAME" >> $GITHUB_ENV
+          echo "ELB hostname: $ELB_HOSTNAME"
+
+      - name: Update phoenix.autometalabs.io CNAME
+        run: |
+          aws route53 change-resource-record-sets \
+            --hosted-zone-id ${{ env.HOSTED_ZONE_ID }} \
+            --change-batch "{
+              \"Changes\": [{
+                \"Action\": \"UPSERT\",
+                \"ResourceRecordSet\": {
+                  \"Name\": \"phoenix.autometalabs.io\",
+                  \"Type\": \"CNAME\",
+                  \"TTL\": 60,
+                  \"ResourceRecords\": [{\"Value\": \"${{ env.ELB_HOSTNAME }}\"}]
+                }
+              }]
+            }"
+          echo "Production CNAME updated:"
+          echo "  phoenix.autometalabs.io → ${{ env.ELB_HOSTNAME }}"
+          echo "  (cluster: ${{ env.CLUSTER_NAME }})"
