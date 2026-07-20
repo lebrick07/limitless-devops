@@ -92,6 +92,19 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
+      - name: Write backend config
+        working-directory: eks_deploy/infra_deploy/${{ inputs.environment }}
+        run: |
+          cat > backend.tf << EOF
+          terraform {
+            backend "s3" {
+              bucket = "collectalot-tf-state"
+              key    = "environments/${{ inputs.environment }}/${{ inputs.cluster }}/infra/terraform.tfstate"
+              region = "us-east-1"
+            }
+          }
+          EOF
+
       - name: Terraform init
         working-directory: eks_deploy/infra_deploy/${{ inputs.environment }}
         run: terraform init
