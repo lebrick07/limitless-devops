@@ -134,7 +134,7 @@ jobs:
       - name: Set cluster vars
         run: |
           echo "CLUSTER_NAME=${{ inputs.environment }}-app-api-${{ inputs.cluster }}" >> $GITHUB_ENV
-          echo "CLUSTER_HOST=phoenix-${{ inputs.cluster }}.autometalabs.io" >> $GITHUB_ENV
+          echo "CLUSTER_HOST=phoenix-${{ inputs.environment }}-${{ inputs.cluster }}.autometalabs.io" >> $GITHUB_ENV
 
       - name: Configure kubectl
         run: aws eks update-kubeconfig --name ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
