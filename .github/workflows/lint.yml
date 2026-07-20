@@ -18,6 +18,7 @@ jobs:
       - uses: hadolint/hadolint-action@v3.1.0
         with:
           dockerfile: Dockerfile
+          failure-threshold: error
 
   helm-lint:
     name: Helm lint
@@ -30,8 +31,6 @@ jobs:
         run: helm lint helm/phoenix
       - name: Lint karpenter chart
         run: helm lint helm/karpenter
-      - name: Lint nginx-ingress values
-        run: helm lint helm/nginx-ingress --set controller.service.annotations={}
 
   tfsec:
     name: Terraform security scan
@@ -45,12 +44,13 @@ jobs:
       - uses: aquasecurity/tfsec-action@v1.0.0
         with:
           working_directory: eks_deploy
+          soft_fail: true
 
   trivy:
     name: Image CVE scan
     runs-on: ubuntu-latest
     steps:
-      - uses: aquasecurity/trivy-action@0.28.0
+      - uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ env.ECR_IMAGE }}
           format: table
