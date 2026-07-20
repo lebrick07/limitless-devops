@@ -56,11 +56,11 @@ jobs:
           fi
           echo "ELB_HOSTNAME=$ELB_HOSTNAME" >> $GITHUB_ENV
 
-      - name: Add stable hostname to ingress
+      - name: Update ingress and PHX_HOST for stable hostname
         run: |
           helm upgrade phoenix-demo ./helm/phoenix \
             -f helm/phoenix/values-eks.yaml \
-            --set env.PHX_HOST=${{ env.CLUSTER_HOST }} \
+            --set env.PHX_HOST=${{ env.STABLE_HOST }} \
             --set ingress.hosts[0].host=${{ env.CLUSTER_HOST }} \
             --set ingress.hosts[0].paths[0].path=/ \
             --set ingress.hosts[0].paths[0].pathType=Prefix \
