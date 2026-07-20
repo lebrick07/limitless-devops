@@ -1,0 +1,144 @@
+name: Deploy EKS + Phoenix
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip_build:
+        description: 'Skip Docker build+push (use existing ECR image)'
+        type: boolean
+        default: false
+
+env:
+  AWS_REGION: us-east-1
+  CLUSTER_NAME: dev-app-api-cl01
+  ECR_IMAGE: public.ecr.aws/m8k1g5q8/phoenix-liveview-demo:v1.0.0
+  HOSTED_ZONE_ID: Z00700503JFGXII6MMCA9
+  PHOENIX_HOST: phoenix.autometalabs.io
+
+jobs:
+  terraform:
+    name: Provision EKS cluster
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout eks_deploy
+        uses: actions/checkout@v4
+        with:
+          repository: Autometa-Labs/eks_deploy
+          path: eks_deploy
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform init
+        working-directory: eks_deploy/infra_deploy/dev
+        run: terraform init
+
+      - name: Terraform apply
+        working-directory: eks_deploy/infra_deploy/dev
+        run: terraform apply -auto-approve
+
+  build-and-push:
+    name: Build & push image
+    runs-on: ubuntu-latest
+    if: ${{ inputs.skip_build != true }}
+    steps:
+      - name: Checkout app repo
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR Public
+        run: |
+          aws ecr-public get-login-password --region us-east-1 | \
+            docker login --username AWS --password-stdin public.ecr.aws
+
+      - name: Build image
+        run: docker build -t ${{ env.ECR_IMAGE }} .
+
+      - name: Push image
+        run: docker push ${{ env.ECR_IMAGE }}
+
+  deploy-apps:
+    name: Deploy apps to EKS
+    runs-on: ubuntu-latest
+    needs: [terraform, build-and-push]
+    if: |
+      always() &&
+      needs.terraform.result == 'success' &&
+      (needs.build-and-push.result == 'success' || needs.build-and-push.result == 'skipped')
+    steps:
+      - name: Checkout app repo
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure kubectl
+        run: aws eks update-kubeconfig --name ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
+
+      - name: Install nginx ingress (with ACM TLS)
+        run: |
+          helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+          helm repo update
+          helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+            --namespace ingress-nginx --create-namespace \
+            -f helm/nginx-ingress/values-eks.yaml \
+            --wait
+
+      - name: Install Karpenter controller
+        run: |
+          aws ecr-public get-login-password --region us-east-1 | \
+            helm registry login --username AWS --password-stdin public.ecr.aws
+          helm upgrade --install karpenter oci://public.ecr.aws/karpenter/karpenter \
+            --version "1.3.3" \
+            --namespace karpenter --create-namespace \
+            -f helm/karpenter/values-controller.yaml \
+            --wait
+
+      - name: Deploy Karpenter NodePool + EC2NodeClass
+        run: |
+          helm upgrade --install karpenter-config ./helm/karpenter \
+            --namespace karpenter
+
+      - name: Deploy Phoenix
+        run: |
+          helm upgrade --install phoenix-demo ./helm/phoenix \
+            -f helm/phoenix/values-eks.yaml \
+            --set secretEnv.SECRET_KEY_BASE="$(openssl rand -hex 64)"
+
+      - name: Update Route53 CNAME
+        run: |
+          ELB_HOSTNAME=$(kubectl get svc -n ingress-nginx ingress-nginx-controller \
+            -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          aws route53 change-resource-record-sets \
+            --hosted-zone-id ${{ env.HOSTED_ZONE_ID }} \
+            --change-batch "{
+              \"Changes\": [{
+                \"Action\": \"UPSERT\",
+                \"ResourceRecordSet\": {
+                  \"Name\": \"${{ env.PHOENIX_HOST }}\",
+                  \"Type\": \"CNAME\",
+                  \"TTL\": 60,
+                  \"ResourceRecords\": [{\"Value\": \"$ELB_HOSTNAME\"}]
+                }
+              }]
+            }"
+
+      - name: Wait for rollout
+        run: kubectl rollout status deployment/phoenix-demo-phoenix-liveview-demo --timeout=5m

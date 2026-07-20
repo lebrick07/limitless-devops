@@ -1,0 +1,78 @@
+name: Destroy EKS cluster
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type DESTROY to confirm teardown'
+        type: string
+        required: true
+
+env:
+  AWS_REGION: us-east-1
+  CLUSTER_NAME: dev-app-api-cl01
+
+jobs:
+  destroy:
+    name: Tear down cluster
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm destruction
+        if: ${{ inputs.confirm != 'DESTROY' }}
+        run: |
+          echo "Confirmation input was '${{ inputs.confirm }}' — must be exactly 'DESTROY'. Aborting."
+          exit 1
+
+      - name: Checkout app repo
+        uses: actions/checkout@v4
+
+      - name: Checkout eks_deploy
+        uses: actions/checkout@v4
+        with:
+          repository: Autometa-Labs/eks_deploy
+          path: eks_deploy
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure kubectl
+        run: aws eks update-kubeconfig --name ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
+
+      - name: Uninstall nginx ingress (triggers ELB deletion)
+        run: helm uninstall ingress-nginx -n ingress-nginx || true
+
+      - name: Wait for ELB to be deleted
+        run: |
+          echo "Waiting for ELB to be removed by AWS..."
+          for i in $(seq 1 30); do
+            if ! kubectl get svc -n ingress-nginx ingress-nginx-controller &>/dev/null; then
+              echo "ELB service gone."
+              break
+            fi
+            echo "Still waiting... ($i/30)"
+            sleep 10
+          done
+
+      - name: Uninstall Phoenix
+        run: helm uninstall phoenix-demo || true
+
+      - name: Uninstall Karpenter NodePool + EC2NodeClass
+        run: helm uninstall karpenter-config -n karpenter || true
+
+      - name: Uninstall Karpenter controller
+        run: helm uninstall karpenter -n karpenter || true
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform init
+        working-directory: eks_deploy/infra_deploy/dev
+        run: terraform init
+
+      - name: Terraform destroy
+        working-directory: eks_deploy/infra_deploy/dev
+        run: terraform destroy -auto-approve
