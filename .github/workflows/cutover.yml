@@ -23,6 +23,9 @@ jobs:
     name: Promote ${{ inputs.environment }}/${{ inputs.cluster }} to stable CNAME
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout app repo
+        uses: actions/checkout@v4
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -32,16 +35,13 @@ jobs:
 
       - name: Set cluster vars
         run: |
-          CLUSTER_NAME="${{ inputs.environment }}-app-api-${{ inputs.cluster }}"
-          echo "CLUSTER_NAME=$CLUSTER_NAME" >> $GITHUB_ENV
-
-          # Map environment to its stable CNAME
+          echo "CLUSTER_NAME=${{ inputs.environment }}-app-api-${{ inputs.cluster }}" >> $GITHUB_ENV
+          echo "CLUSTER_HOST=phoenix-${{ inputs.environment }}-${{ inputs.cluster }}.autometalabs.io" >> $GITHUB_ENV
           case "${{ inputs.environment }}" in
-            dev)     STABLE_HOST="phoenix-dev.autometalabs.io" ;;
-            staging) STABLE_HOST="phoenix-staging.autometalabs.io" ;;
-            prod)    STABLE_HOST="phoenix.autometalabs.io" ;;
+            dev)     echo "STABLE_HOST=phoenix-dev.autometalabs.io" >> $GITHUB_ENV ;;
+            staging) echo "STABLE_HOST=phoenix-staging.autometalabs.io" >> $GITHUB_ENV ;;
+            prod)    echo "STABLE_HOST=phoenix.autometalabs.io" >> $GITHUB_ENV ;;
           esac
-          echo "STABLE_HOST=$STABLE_HOST" >> $GITHUB_ENV
 
       - name: Configure kubectl
         run: aws eks update-kubeconfig --name ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
@@ -55,6 +55,19 @@ jobs:
             exit 1
           fi
           echo "ELB_HOSTNAME=$ELB_HOSTNAME" >> $GITHUB_ENV
+
+      - name: Add stable hostname to ingress
+        run: |
+          helm upgrade phoenix-demo ./helm/phoenix \
+            -f helm/phoenix/values-eks.yaml \
+            --set env.PHX_HOST=${{ env.CLUSTER_HOST }} \
+            --set ingress.hosts[0].host=${{ env.CLUSTER_HOST }} \
+            --set ingress.hosts[0].paths[0].path=/ \
+            --set ingress.hosts[0].paths[0].pathType=Prefix \
+            --set ingress.hosts[1].host=${{ env.STABLE_HOST }} \
+            --set ingress.hosts[1].paths[0].path=/ \
+            --set ingress.hosts[1].paths[0].pathType=Prefix \
+            --reuse-values
 
       - name: Update stable CNAME
         run: |

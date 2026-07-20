@@ -176,6 +176,8 @@ jobs:
             -f helm/phoenix/values-eks.yaml \
             --set env.PHX_HOST=${{ env.CLUSTER_HOST }} \
             --set ingress.hosts[0].host=${{ env.CLUSTER_HOST }} \
+            --set ingress.hosts[0].paths[0].path=/ \
+            --set ingress.hosts[0].paths[0].pathType=Prefix \
             --set secretEnv.SECRET_KEY_BASE="$(openssl rand -hex 64)"
 
       - name: Update Route53 CNAME for cluster slot
