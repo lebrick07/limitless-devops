@@ -58,6 +58,7 @@ jobs:
 
       - name: Update ingress and PHX_HOST for stable hostname
         run: |
+          SECRET_KEY_BASE=$(helm get values phoenix-demo -a -o json | jq -r '.secretEnv.SECRET_KEY_BASE')
           helm upgrade phoenix-demo ./helm/phoenix \
             -f helm/phoenix/values-eks.yaml \
             --set env.PHX_HOST=${{ env.STABLE_HOST }} \
@@ -67,8 +68,8 @@ jobs:
             --set ingress.hosts[1].host=${{ env.STABLE_HOST }} \
             --set ingress.hosts[1].paths[0].path=/ \
             --set ingress.hosts[1].paths[0].pathType=Prefix \
-            --set secretEnv.SECRET_KEY_BASE="$(openssl rand -hex 64)" \
-            --wait
+            --set secretEnv.SECRET_KEY_BASE="$SECRET_KEY_BASE" \
+            --wait --timeout 10m
 
       - name: Update stable CNAME
         run: |
