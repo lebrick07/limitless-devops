@@ -67,7 +67,8 @@ jobs:
             --set ingress.hosts[1].host=${{ env.STABLE_HOST }} \
             --set ingress.hosts[1].paths[0].path=/ \
             --set ingress.hosts[1].paths[0].pathType=Prefix \
-            --reuse-values
+            --set secretEnv.SECRET_KEY_BASE="$(openssl rand -hex 64)" \
+            --wait
 
       - name: Update stable CNAME
         run: |
