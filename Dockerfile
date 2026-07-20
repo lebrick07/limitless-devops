@@ -60,6 +60,7 @@ RUN mix release
 FROM debian:bullseye-20230227-slim AS runner
 
 RUN apt-get update -y && \
+    apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
       libstdc++6 \
       openssl \
