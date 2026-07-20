@@ -40,6 +40,35 @@ jobs:
         working-directory: eks_deploy/infra_deploy/dev
         run: terraform init
 
+      - name: Write tfvars
+        working-directory: eks_deploy/infra_deploy/dev
+        run: |
+          cat > terraform.tfvars << 'EOF'
+          vpc_name       = "dev-app-vpc"
+          region         = ["us-east-1"]
+          subnets        = ["dev-app-public-subnet-01", "dev-app-public-subnet-02"]
+          prefix         = "dev-app-"
+          cluster_prefix = "cl01"
+          eks_version    = "1.30"
+
+          worker_node_policy                   = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+          cni_policy                           = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+          container_registry_read_only_policy  = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+          cluster_policy                       = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
+          resource_controller_policy           = "arn:aws:iam::aws:policy/AmazonEKSVPCResourceController"
+
+          nodegroups = [
+            {
+              desired_size  = "2"
+              max_size      = "4"
+              min_size      = "1"
+              instance_type = "t3.medium"
+              ng_prefix     = "worker"
+              volume_size   = "20"
+            }
+          ]
+          EOF
+
       - name: Terraform apply
         working-directory: eks_deploy/infra_deploy/dev
         run: terraform apply -auto-approve
