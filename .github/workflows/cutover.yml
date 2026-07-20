@@ -3,13 +3,8 @@ name: Cutover to production
 on:
   workflow_dispatch:
     inputs:
-      environment:
-        description: 'Source environment'
-        type: choice
-        options: [dev, staging, prod]
-        default: dev
       cluster:
-        description: 'Cluster slot to promote'
+        description: 'Prod cluster slot to promote to phoenix.autometalabs.io'
         type: choice
         options: [cl01, cl02, cl03]
         default: cl01
@@ -20,7 +15,7 @@ env:
 
 jobs:
   cutover:
-    name: Promote cluster to production CNAME
+    name: Promote prod cluster to phoenix.autometalabs.io
     runs-on: ubuntu-latest
     steps:
       - name: Configure AWS credentials
@@ -32,8 +27,8 @@ jobs:
 
       - name: Set cluster vars
         run: |
-          echo "CLUSTER_NAME=${{ inputs.environment }}-app-api-${{ inputs.cluster }}" >> $GITHUB_ENV
-          echo "CLUSTER_HOST=phoenix-${{ inputs.environment }}-${{ inputs.cluster }}.autometalabs.io" >> $GITHUB_ENV
+          echo "CLUSTER_NAME=prod-app-api-${{ inputs.cluster }}" >> $GITHUB_ENV
+          echo "CLUSTER_HOST=phoenix-prod-${{ inputs.cluster }}.autometalabs.io" >> $GITHUB_ENV
 
       - name: Configure kubectl
         run: aws eks update-kubeconfig --name ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
